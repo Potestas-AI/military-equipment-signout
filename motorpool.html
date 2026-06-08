@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Motor Pool Dispatch &amp; Readiness</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<style>
+  :root{
+    --bg:#040805; --panel:#0a120c; --panel2:#070d09; --line:#16331f; --line2:#235636;
+    --green:#3dff8c; --green-bright:#9bffc6; --green-dim:#2a8a52;
+    --amber:#ffb43a; --red:#ff5151; --cyan:#54e0ff; --dim:#3a7a55; --txt:#bfe8cf;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{background:var(--bg);color:var(--txt);font-family:'Share Tech Mono',monospace;height:100%;overflow:hidden;}
+  body{display:flex;flex-direction:column;position:relative;}
+  /* atmosphere */
+  body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(61,255,140,.10), transparent 60%),
+      radial-gradient(100% 60% at 50% 120%, rgba(84,224,255,.05), transparent 60%),
+      repeating-linear-gradient(0deg, transparent 0 38px, rgba(61,255,140,.025) 38px 39px),
+      repeating-linear-gradient(90deg, transparent 0 38px, rgba(61,255,140,.025) 38px 39px);}
+  body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    box-shadow:inset 0 0 240px rgba(0,0,0,.9);
+    background:linear-gradient(180deg, rgba(61,255,140,.04), transparent 8%);}
+  .sweep{position:fixed;left:0;right:0;height:140px;z-index:0;pointer-events:none;
+    background:linear-gradient(180deg, transparent, rgba(61,255,140,.06), transparent);
+    animation:sweep 7s linear infinite;}
+  @keyframes sweep{0%{top:-140px;}100%{top:100%;}}
+  .view{display:none;flex:1;min-height:0;position:relative;z-index:1;}
+  #boardView{flex-direction:column;}
+  .view.active{display:flex;}
+  /* classification banner */
+  .classbar{background:#0b3b1c;color:#7dffb0;text-align:center;font-size:10px;letter-spacing:5px;
+    padding:3px;border-bottom:1px solid var(--line2);text-transform:uppercase;flex-shrink:0;position:relative;z-index:2;}
+  .topbar{background:linear-gradient(180deg,var(--panel),var(--panel2));border-bottom:1px solid var(--line);
+    padding:11px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:relative;z-index:2;}
+  .topbar .left{display:flex;align-items:center;gap:12px;}
+  .crest{width:30px;height:30px;border:1px solid var(--green-dim);border-radius:5px;display:flex;align-items:center;justify-content:center;
+    color:var(--green);background:radial-gradient(circle,rgba(61,255,140,.15),transparent);box-shadow:0 0 12px rgba(61,255,140,.25);}
+  .topbar h1{font-family:'Orbitron',sans-serif;font-weight:700;font-size:16px;letter-spacing:3px;color:var(--green-bright);
+    text-shadow:0 0 12px rgba(61,255,140,.4);}
+  .clock{font-size:13px;color:var(--green);letter-spacing:2px;display:flex;align-items:center;gap:8px;}
+  .radar{width:9px;height:9px;border-radius:50%;background:var(--green);position:relative;}
+  .radar::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:1px solid var(--green);
+    animation:ping 1.8s ease-out infinite;}
+  @keyframes ping{0%{transform:scale(.6);opacity:.9;}100%{transform:scale(2.2);opacity:0;}}
+  /* readiness bar */
+  .rbar{display:grid;grid-template-columns:repeat(4,1fr) 1.1fr;gap:1px;background:var(--line);
+    border-bottom:1px solid var(--line);flex-shrink:0;position:relative;z-index:2;}
+  .rcell{background:linear-gradient(180deg,var(--panel),var(--panel2));padding:16px 12px;text-align:center;position:relative;overflow:hidden;}
+  .rcell .n{font-family:'Orbitron',sans-serif;font-weight:900;font-size:46px;line-height:1;color:var(--green-bright);
+    text-shadow:0 0 18px rgba(61,255,140,.45);}
+  .rcell .n.blue{color:var(--cyan);text-shadow:0 0 18px rgba(84,224,255,.45);}
+  .rcell .n.red{color:var(--red);text-shadow:0 0 18px rgba(255,81,81,.45);}
+  .rcell .n.amber{color:var(--amber);text-shadow:0 0 18px rgba(255,180,58,.45);}
+  .rcell .l{font-size:10px;letter-spacing:3px;color:var(--dim);text-transform:uppercase;margin-top:8px;}
+  .gaugewrap{display:flex;align-items:center;justify-content:center;gap:14px;}
+  .gauge{width:96px;height:96px;transform:rotate(-90deg);}
+  .gauge .track{fill:none;stroke:#10271a;stroke-width:9;}
+  .gauge .prog{fill:none;stroke:var(--green);stroke-width:9;stroke-linecap:round;
+    filter:drop-shadow(0 0 6px rgba(61,255,140,.7));transition:stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1),stroke .5s;}
+  .gauge-cap{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;inset:0;}
+  .gauge-cap .pct{font-family:'Orbitron',sans-serif;font-weight:700;font-size:22px;color:var(--green-bright);text-shadow:0 0 12px rgba(61,255,140,.5);}
+  .gauge-cap .cl{font-size:8px;letter-spacing:2px;color:var(--dim);}
+  .gcell{position:relative;}
+  /* board */
+  .bgrid-wrap{flex:1;padding:18px 20px;overflow-y:auto;position:relative;z-index:1;}
+  .bhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+  .bhead .t{font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:4px;color:var(--green);text-transform:uppercase;display:flex;align-items:center;gap:8px;}
+  .filters{display:flex;gap:6px;flex-wrap:wrap;}
+  .fbtn{background:rgba(20,40,28,.4);border:1px solid var(--line);color:var(--dim);font-family:'Share Tech Mono',monospace;
+    font-size:10px;letter-spacing:2px;padding:6px 13px;text-transform:uppercase;border-radius:4px;transition:.15s;}
+  .fbtn:hover{border-color:var(--green-dim);color:var(--txt);}
+  .fbtn.active{border-color:var(--green);color:var(--green);background:rgba(61,255,140,.1);box-shadow:0 0 12px rgba(61,255,140,.2);}
+  .livetag{font-family:'Orbitron',sans-serif;font-size:12px;letter-spacing:3px;color:var(--green);display:flex;align-items:center;gap:7px;}
+  .catsec{margin-bottom:22px;}
+  .cathd{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px;}
+  .cathd .nm{font-size:12px;letter-spacing:4px;color:var(--green-bright);text-transform:uppercase;display:flex;align-items:center;gap:9px;}
+  .cathd .nm i{color:var(--green-dim);}
+  .cathd .bar{flex:1;height:1px;background:var(--line);margin:0 16px;position:relative;}
+  .cathd .cnt{font-size:10px;letter-spacing:2px;color:var(--dim);white-space:nowrap;}
+  .pbar{width:120px;height:4px;background:#10271a;border-radius:2px;overflow:hidden;margin-left:14px;}
+  .pbar i{display:block;height:100%;background:linear-gradient(90deg,var(--green-dim),var(--green));box-shadow:0 0 8px rgba(61,255,140,.5);transition:width .8s;}
+  .bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px;}
+  .vc{background:linear-gradient(155deg,var(--panel),var(--panel2));border:1px solid var(--line);
+    padding:13px 15px 13px 17px;min-height:108px;border-radius:7px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .3s,border-color .3s;}
+  .vc::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green-dim);}
+  .vc.avail::before{background:var(--green);box-shadow:0 0 10px var(--green);}
+  .vc.out{border-color:rgba(255,180,58,.4);}
+  .vc.out::before{background:var(--amber);box-shadow:0 0 12px var(--amber);}
+  .vc.deadline{border-color:rgba(255,81,81,.5);}
+  .vc.deadline::before{background:var(--red);box-shadow:0 0 12px var(--red);}
+  .vc:hover{transform:translateY(-2px);border-color:var(--green-dim);}
+  .vc.enter{animation:enter .5s ease both;}
+  @keyframes enter{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+  .vc.flash{animation:flash 1s ease;}
+  @keyframes flash{0%{box-shadow:0 0 0 0 rgba(61,255,140,.8);}100%{box-shadow:0 0 0 16px rgba(61,255,140,0);}}
+  .vc .nm{font-family:'Orbitron',sans-serif;font-weight:700;font-size:17px;letter-spacing:1px;color:var(--green-bright);text-shadow:0 0 10px rgba(61,255,140,.3);}
+  .vc .sub{font-size:9px;color:var(--dim);letter-spacing:1px;margin:3px 0 9px;text-transform:uppercase;}
+  .pill{font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:3px 8px;display:inline-block;border-radius:3px;font-weight:bold;}
+  .pill.avail{background:rgba(61,255,140,.12);color:var(--green);border:1px solid var(--green-dim);}
+  .pill.out{background:rgba(255,180,58,.12);color:var(--amber);border:1px solid rgba(255,180,58,.4);}
+  .pill.dead{background:rgba(255,81,81,.12);color:var(--red);border:1px solid rgba(255,81,81,.4);}
+  .vc .sol{font-size:11px;color:#ffd27a;letter-spacing:1px;margin-top:9px;display:flex;align-items:center;gap:5px;}
+  .vc .note{font-size:9px;color:var(--cyan);margin-top:3px;}
+  .vc .tm{font-size:9px;color:var(--dim);margin-top:2px;letter-spacing:1px;}
+  /* command feed */
+  .blog{flex-shrink:0;background:linear-gradient(180deg,var(--panel2),var(--panel));border-top:1px solid var(--line);
+    padding:10px 22px;height:128px;overflow-y:auto;position:relative;z-index:2;}
+  .blog .hd{font-size:9px;letter-spacing:4px;color:var(--green-dim);text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:7px;position:sticky;top:0;}
+  .blog .hd .cur{width:7px;height:12px;background:var(--green);animation:blink 1s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0;}}
+  .le{font-size:11px;letter-spacing:1px;color:var(--dim);margin-bottom:3px;}
+  .le b{color:var(--green-dim);}
+  .le.o{color:#ffd27a;}.le.i{color:var(--green);}.le.f{color:var(--cyan);}.le.d{color:var(--red);}
+  /* scanner */
+  #scanView{flex-direction:column;padding:14px;gap:11px;overflow-y:auto;}
+  .label{font-size:9px;letter-spacing:3px;color:var(--dim);text-transform:uppercase;margin-bottom:4px;}
+  .cam{background:var(--panel2);border:1px solid var(--line);position:relative;width:100%;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:8px;box-shadow:inset 0 0 40px rgba(0,0,0,.6);}
+  .cam video{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;}
+  .corner{position:absolute;width:18px;height:18px;border-color:var(--green);border-style:solid;filter:drop-shadow(0 0 4px var(--green));}
+  .corner.tl{top:7px;left:7px;border-width:2px 0 0 2px;}.corner.tr{top:7px;right:7px;border-width:2px 2px 0 0;}
+  .corner.bl{bottom:7px;left:7px;border-width:0 0 2px 2px;}.corner.br{bottom:7px;right:7px;border-width:0 2px 2px 0;}
+  .ph{text-align:center;color:var(--line2);}.ph i{font-size:36px;display:block;margin-bottom:6px;}.ph p{font-size:10px;letter-spacing:1px;}
+  .scanline{position:absolute;left:0;right:0;height:2px;background:var(--green);box-shadow:0 0 10px var(--green);display:none;animation:scan 1.4s linear infinite;}
+  @keyframes scan{0%{top:0;}100%{top:100%;}}
+  .scanning .scanline{display:block;}
+  button{font-family:'Share Tech Mono',monospace;cursor:pointer;border-radius:6px;}
+  .btn-primary{background:linear-gradient(180deg,rgba(61,255,140,.18),rgba(61,255,140,.06));border:1px solid var(--green);color:var(--green-bright);font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:2px;padding:15px;width:100%;text-transform:uppercase;box-shadow:0 0 16px rgba(61,255,140,.2);}
+  .btn-primary:active{background:rgba(61,255,140,.3);}
+  .btn-primary:disabled{border-color:var(--line2);color:var(--line2);box-shadow:none;background:var(--panel);}
+  .status{background:var(--panel2);border:1px solid var(--line);padding:11px 14px;min-height:48px;border-radius:6px;}
+  .status .t{font-size:12px;letter-spacing:1px;color:var(--green-bright);}
+  .status .t.warn{color:var(--amber);}.status .t.err{color:var(--red);}
+  .soldier{background:linear-gradient(155deg,rgba(61,255,140,.1),var(--panel2));border:1px solid var(--green-dim);padding:13px;border-radius:7px;box-shadow:0 0 18px rgba(61,255,140,.15);}
+  .soldier .nm{font-family:'Orbitron',sans-serif;font-weight:700;font-size:18px;color:var(--green-bright);letter-spacing:1px;text-shadow:0 0 10px rgba(61,255,140,.4);}
+  .soldier .rk{font-size:12px;color:var(--green);letter-spacing:2px;margin-top:2px;}
+  select,input{background:var(--panel2);border:1px solid var(--line2);color:var(--green-bright);font-family:'Share Tech Mono',monospace;font-size:14px;padding:12px;width:100%;border-radius:6px;}
+  .btn-voice{background:rgba(84,224,255,.06);border:1px solid var(--cyan);color:var(--cyan);font-size:12px;letter-spacing:1px;padding:13px;width:100%;text-transform:uppercase;}
+  .btn-voice.listening{background:rgba(84,224,255,.18);animation:pulse 1s infinite;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .btn-out{background:linear-gradient(180deg,rgba(61,255,140,.14),transparent);border:1px solid var(--green);color:var(--green);font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:1px;padding:14px 6px;text-transform:uppercase;}
+  .btn-in{background:linear-gradient(180deg,rgba(255,180,58,.14),transparent);border:1px solid var(--amber);color:var(--amber);font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:1px;padding:14px 6px;text-transform:uppercase;}
+  .btn-out:disabled,.btn-in:disabled{opacity:.3;}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--dim);font-size:10px;letter-spacing:1px;padding:10px;width:100%;text-transform:uppercase;}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;font-size:10px;letter-spacing:1px;color:var(--dim);padding:4px 0;}
+  .tg{width:42px;height:21px;background:var(--line);border-radius:11px;position:relative;cursor:pointer;}
+  .tg.on{background:rgba(61,255,140,.2);border:1px solid var(--green);}
+  .tg .k{position:absolute;top:2px;left:2px;width:16px;height:16px;background:var(--dim);border-radius:50%;transition:.2s;}
+  .tg.on .k{left:22px;background:var(--green);box-shadow:0 0 8px var(--green);}
+  .admin{border-top:1px solid var(--line);padding-top:12px;margin-top:2px;}
+  .admin .ar{display:flex;gap:7px;margin-bottom:7px;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+  .setup{position:fixed;inset:0;background:var(--bg);z-index:99;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .setup .card{background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:24px;max-width:440px;}
+  .setup h2{color:var(--green-bright);font-size:18px;margin-bottom:12px;}
+  .setup p{font-size:12px;line-height:1.7;color:#9ab89a;margin-bottom:14px;}
+  .setup code{color:var(--amber);font-size:11px;}
+</style>
+</head>
+<body>
+<div class="sweep"></div>
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "YOUR_FIREBASE_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  appId: "YOUR_FIREBASE_APP_ID"
+};
+const ANTHROPIC_API_KEY = "YOUR_ANTHROPIC_API_KEY";
+const UNIT_LABEL = "MOTOR POOL DISPATCH & READINESS";
+/* true = load real current assignments | false = all available */
+const SEED_AS_ISSUED = true;
+/* Bump this number to force a clean reseed (overwrites the board with SEED) */
+const SEED_VERSION = 3;
+</script>
+
+<div class="classbar">Unclassified // For Demonstration Only</div>
+<div class="topbar">
+  <div class="left"><div class="crest"><i class="ti ti-shield-chevron"></i></div><h1 id="unitLabel"></h1></div>
+  <div class="clock"><span class="radar"></span><span id="clock">--:--:-- Z</span></div>
+</div>
+
+<div class="view" id="boardView">
+  <div class="rbar">
+    <div class="rcell"><div class="n" id="rTotal">0</div><div class="l">On Hand</div></div>
+    <div class="rcell"><div class="n" id="rFmc">0</div><div class="l">Mission Capable</div></div>
+    <div class="rcell"><div class="n blue" id="rOut">0</div><div class="l">Signed Out</div></div>
+    <div class="rcell"><div class="n red" id="rDead">0</div><div class="l">Deadlined</div></div>
+    <div class="rcell gcell">
+      <div class="gaugewrap">
+        <svg class="gauge" viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="52"/><circle class="prog" id="gaugeProg" cx="60" cy="60" r="52"/></svg>
+        <div class="gauge-cap"><div class="pct" id="gaugePct">0%</div><div class="cl">FMC Rate</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="bgrid-wrap">
+    <div class="bhead">
+      <div class="t"><i class="ti ti-clipboard-list"></i> Equipment Status Board</div>
+      <div class="filters" id="filters">
+        <button class="fbtn active" data-f="all">All</button>
+        <button class="fbtn" data-f="VEHICLE">Vehicles</button>
+        <button class="fbtn" data-f="GSA RENTAL">GSA</button>
+        <button class="fbtn" data-f="RADIO">Radios</button>
+        <button class="fbtn" data-f="BUILDING KEY">Keys</button>
+        <button class="fbtn" data-f="CONTROLLER">Ctrl</button>
+      </div>
+      <div class="livetag"><span class="radar"></span> LIVE</div>
+    </div>
+    <div id="board"></div>
+  </div>
+  <div class="blog"><div class="hd"><span class="cur"></span> Transaction Feed</div><div id="blogList"></div></div>
+</div>
+
+<div class="view" id="scanView">
+  <div><div class="label">Name Tape Scanner</div>
+    <div class="cam" id="cam">
+      <video id="video" autoplay playsinline style="display:none;"></video>
+      <div class="scanline" id="scanline"></div>
+      <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+      <div class="ph" id="ph"><i class="ti ti-tag"></i><p>Camera inactive</p></div>
+    </div></div>
+  <button class="btn-primary" id="scanBtn"><i class="ti ti-scan"></i> Activate Scanner</button>
+  <button class="ghost" id="manualBtn"><i class="ti ti-keyboard"></i> Enter Manually (camera down)</button>
+  <div id="manualForm" style="display:none;background:var(--panel2);border:1px solid var(--line2);border-radius:7px;padding:12px;">
+    <div class="label">Manual Entry</div>
+    <input id="mRank" placeholder="Rank (e.g. SSG)" style="margin-bottom:7px;text-transform:uppercase;">
+    <input id="mName" placeholder="Name (e.g. SMITH, JOHN)" style="margin-bottom:9px;text-transform:uppercase;">
+    <div class="row2"><button class="btn-out" id="mConfirm"><i class="ti ti-check"></i> Confirm</button><button class="ghost" id="mCancel">Cancel</button></div>
+  </div>
+  <div class="status"><div class="t" id="statusT">SYSTEM READY - AWAITING ACTIVATION</div></div>
+  <div class="soldier" id="soldierCard" style="display:none;"><div class="label">Identified Personnel</div><div class="nm" id="solName">-</div><div class="rk" id="solRank">-</div></div>
+  <div><div class="label">Select Equipment</div><select id="vehSel" disabled><option value="">- Scan name tape first -</option></select></div>
+  <button class="btn-voice" id="voiceBtn" disabled><i class="ti ti-microphone"></i> Speak Equipment</button>
+  <div class="row2"><button class="btn-out" id="btnOut" disabled><i class="ti ti-arrow-right"></i> Sign Out</button><button class="btn-in" id="btnIn" disabled><i class="ti ti-arrow-left"></i> Sign In</button></div>
+  <button class="ghost" id="clearBtn"><i class="ti ti-refresh"></i> Clear / Next Soldier</button>
+  <div class="toggle-row"><span><i class="ti ti-volume"></i> VOICE ANNOUNCEMENTS</span><div class="tg on" id="voiceTg"><div class="k"></div></div></div>
+  <div class="admin"><div class="label"><i class="ti ti-lock"></i> Admin Override</div>
+    <div class="ar"><input id="newVeh" placeholder="New equipment name"><button class="ghost" id="addBtn" style="width:auto;padding:10px 14px;">ADD</button></div>
+    <select id="deadSel" style="margin-bottom:7px;"><option value="">- Toggle deadline -</option></select>
+    <button class="ghost" id="deadBtn">TOGGLE DEADLINE (NMC)</button></div>
+  <div style="text-align:center;padding:6px;"><a href="?view=board" style="color:var(--dim);font-size:10px;letter-spacing:1px;">OPEN BOARD VIEW &rarr;</a></div>
+</div>
+
+<div class="setup" id="setupNag" style="display:none;">
+  <div class="card"><h2>Setup needed</h2><p>Fill in <code>FIREBASE_CONFIG</code> and <code>ANTHROPIC_API_KEY</code> at the top of this file.</p></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+const SEED = [
+  {id:"veh_HF228",cat:"VEHICLE",name:"HF-228",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"575339",lin:"T07679",key:"/ ALT 67",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HG612",cat:"VEHICLE",name:"HG-612",sub:"TRK CGO M1078A1P2 W/W",nsn:"2320-01-549-8611",serial:"A-D705501EHJV",lin:"T42131",key:"/ ALT 68",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HF72",cat:"VEHICLE",name:"HF-72",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"570307",lin:"T07679",key:"/ ALT 70",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02008",cat:"VEHICLE",name:"02-008",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"513272",lin:"T07679",key:"17/ ALT 41",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02017",cat:"VEHICLE",name:"02-017",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"608311",lin:"T07679",key:"18/ ALT 42",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02019",cat:"VEHICLE",name:"02-019",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"611750",lin:"T07679",key:"19/ ALT 43",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02037",cat:"VEHICLE",name:"02-037",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"610346",lin:"T07679",key:"20/ ALT 44",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02065",cat:"VEHICLE",name:"02-065",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"606229",lin:"T07679",key:"21/ ALT 47",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02071",cat:"VEHICLE",name:"02-071",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"504381",lin:"T07679",key:"22/ ALT 46",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02077",cat:"VEHICLE",name:"02-077",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"700353",lin:"T07679",key:"23/ ALT 48",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02078",cat:"VEHICLE",name:"02-078",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"603423",lin:"T07679",key:"24/ ALT 45",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02080",cat:"VEHICLE",name:"02-080",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"512813",lin:"T07679",key:"25/ ALT 50",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02084",cat:"VEHICLE",name:"02-084",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"571601",lin:"T07679",key:"26/ ALT 51",loc:"MP 13",status:"out",soldier:"E&E Cell"},
+  {id:"veh_02085",cat:"VEHICLE",name:"02-085",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"611977",lin:"T07679",key:"27/ ALT 52",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02097",cat:"VEHICLE",name:"02-097",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"671685",lin:"T07679",key:"28/ ALT 53",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02107",cat:"VEHICLE",name:"02-107",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"507718",lin:"T07679",key:"29/ ALT 54",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02133",cat:"VEHICLE",name:"02-133",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"676062",lin:"T07679",key:"30/ ALT 55",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_02021",cat:"VEHICLE",name:"02-021",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"700881",lin:"T07679",key:"31/ ALT 49",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HI600",cat:"VEHICLE",name:"HI-600",sub:"TRK CGO 5 TON WO/W",nsn:"2320-01-549-8610",serial:"10TANHFF0JS782043",lin:"T41515",key:"32/ ALT 56",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HI743",cat:"VEHICLE",name:"HI-743",sub:"TRK CGO W/E M1083A1",nsn:"2320-01-447-3890",serial:"B-T111017EGDT",lin:"T61908",key:"33/ ALT 57",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HG315",cat:"VEHICLE",name:"HG-315",sub:"TRK CGO M1078A1 LMTV",nsn:"2320-01-447-6343",serial:"A-T020696BFFN",lin:"T60081",key:"34/ ALT 58",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HF3",cat:"VEHICLE",name:"HF-3",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"612706",lin:"T07679",key:"35/ ALT 59",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HI707",cat:"VEHICLE",name:"HI-707",sub:"TRK CGO W/E M1083A1",nsn:"2320-01-447-3890",serial:"B-T022722BFBP",lin:"T61908",key:"36/ ALT 60",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HG308",cat:"VEHICLE",name:"HG-308",sub:"TRK CGO M1078A1 LMTV",nsn:"2320-01-447-6343",serial:"A-T107273EGKS",lin:"T60081",key:"37/ ALT 61",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HG306",cat:"VEHICLE",name:"HG-306",sub:"TRK CGO M1078A1 LMTV",nsn:"2320-01-447-6343",serial:"A-T020693BFFN",lin:"T60081",key:"38/ ALT 62",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HI752",cat:"VEHICLE",name:"HI-752",sub:"TRK CGO W/E M1083A1",nsn:"2320-01-447-3890",serial:"B-T111928EGFT",lin:"T61908",key:"39/ ALT 63",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HI726",cat:"VEHICLE",name:"HI-726",sub:"TRK CGO W/E M1083A1",nsn:"2320-01-447-3890",serial:"B-T021519BFJN",lin:"T61908",key:"40/ ALT 64",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"veh_HF1",cat:"VEHICLE",name:"HF-1",sub:"TRK UTIL 10000 M1097",nsn:"2320-01-346-9317",serial:"602521",lin:"T07679",key:"65/ ALT 66",loc:"MP 13",status:"out",soldier:"Karen Blancherd",rank:"SSG"},
+  {id:"gsa_EBX988",cat:"GSA RENTAL",name:"EBX 988",sub:"15 PAX VAN",loc:"BLDG 3503",status:"available"},
+  {id:"gsa_A0CXET6",cat:"GSA RENTAL",name:"A0CXET6",sub:"15 PAX VAN",loc:"BLDG 3503",status:"available"},
+  {id:"gsa_407392A",cat:"GSA RENTAL",name:"407392A",sub:"MINIVAN CHRYSLER",loc:"BLDG 3503",status:"available"},
+  {id:"gsa_N640673",cat:"GSA RENTAL",name:"N640673",sub:"MINIVAN CHRYSLER",loc:"BLDG 3503",status:"available"},
+  {id:"gsa_1C03U61",cat:"GSA RENTAL",name:"1C03U61",sub:"FLATBED CHEVY",loc:"BLDG 3503",status:"available"},
+  {id:"rad_A40324000461",cat:"RADIO",name:"XL-200 #0461",sub:"HARRIS L3 XL-200",serial:"A40324000461",status:"out",soldier:"Joseph Cirello",rank:"CW3"},
+  {id:"rad_A40324002708",cat:"RADIO",name:"XL-200 #2708",sub:"HARRIS L3 XL-200",serial:"A40324002708",status:"out",soldier:"George Tower",rank:"CPT"},
+  {id:"rad_A40324002953",cat:"RADIO",name:"XL-200 #2953",sub:"HARRIS L3 XL-200",serial:"A40324002953",status:"out",soldier:"Nelson Munguia",rank:"SSG"},
+  {id:"rad_A40324000492",cat:"RADIO",name:"XL-200 #0492",sub:"HARRIS L3 XL-200",serial:"A40324000492",status:"out",soldier:"Brenda McEnte",rank:"SGT"},
+  {id:"rad_A40324003757",cat:"RADIO",name:"XL-200 #3757",sub:"HARRIS L3 XL-200",serial:"A40324003757",status:"out",soldier:"Wilson",rank:"CPT"},
+  {id:"rad_A40324001518",cat:"RADIO",name:"XL-200 #1518",sub:"HARRIS L3 XL-200",serial:"A40324001518",status:"out",soldier:"George Tower",rank:"CPT"},
+  {id:"rad_A40324005480",cat:"RADIO",name:"XL-200 #5480",sub:"HARRIS L3 XL-200",serial:"A40324005480",status:"out",soldier:"Andrew Josephides",rank:"SFC"},
+  {id:"rad_A40324007820",cat:"RADIO",name:"XL-200 #7820",sub:"HARRIS L3 XL-200",serial:"A40324007820",status:"out",soldier:"Andrew Josephides",rank:"SFC"},
+  {id:"key_3503",cat:"BUILDING KEY",name:"BLDG 3503",sub:"1 KEY SET",status:"available"},
+  {id:"key_3507",cat:"BUILDING KEY",name:"BLDG 3507",sub:"5 KEY SET",status:"available"},
+  {id:"key_3563",cat:"BUILDING KEY",name:"BLDG 3563",sub:"2 KEY SET",status:"available"},
+  {id:"key_2811",cat:"BUILDING KEY",name:"BLDG 2811",sub:"1 KEY SET",status:"out",soldier:"Charles Woods",rank:"Mr"},
+  {id:"ctrl_1",cat:"CONTROLLER",name:"UCD-01",sub:"Universal Controller Device",nsn:"AA55120",status:"out",soldier:"Jennifer Demain",rank:"MAJ"},
+  {id:"ctrl_2",cat:"CONTROLLER",name:"UCD-02",sub:"Universal Controller Device",nsn:"AA55120",status:"out",soldier:"Jennifer Demain",rank:"MAJ"},
+  {id:"ctrl_3",cat:"CONTROLLER",name:"UCD-03",sub:"Universal Controller Device",nsn:"AA55120",status:"out",soldier:"Jennifer Demain",rank:"MAJ"},
+  {id:"ctrl_4",cat:"CONTROLLER",name:"UCD-04",sub:"Universal Controller Device",nsn:"AA55120",status:"out",soldier:"Jennifer Demain",rank:"MAJ"},
+  {id:"ctrl_5",cat:"CONTROLLER",name:"UCD-05",sub:"Universal Controller Device",nsn:"AA55120",status:"out",soldier:"Jennifer Demain",rank:"MAJ"},
+  {id:"ctrl_6",cat:"CONTROLLER",name:"UCD-06",sub:"Universal Controller Device",nsn:"AA55120",status:"out",soldier:"Jennifer Demain",rank:"MAJ"}
+];
+const CAT_ORDER = ['VEHICLE','GSA RENTAL','RADIO','BUILDING KEY','CONTROLLER'];
+const CAT_LABEL = {'VEHICLE':'Tactical Vehicles','GSA RENTAL':'GSA Rentals','RADIO':'Radios (SII)','BUILDING KEY':'Building Keys','CONTROLLER':'Controllers'};
+const CAT_ICON = {'VEHICLE':'ti-truck','GSA RENTAL':'ti-car','RADIO':'ti-radio','BUILDING KEY':'ti-key','CONTROLLER':'ti-device-gamepad-2','OTHER':'ti-box'};
+
+document.getElementById('unitLabel').textContent = UNIT_LABEL;
+const params = new URLSearchParams(location.search);
+const VIEW = params.get('view') === 'scan' ? 'scan' : 'board';
+document.getElementById(VIEW === 'scan' ? 'scanView' : 'boardView').classList.add('active');
+
+const configured = !Object.values(FIREBASE_CONFIG).includes('PASTE_HERE');
+let db=null, state={}, prevState={}, filter='all', firstRender=true;
+const GC = 2*Math.PI*52;
+document.getElementById('gaugeProg') && (document.getElementById('gaugeProg').style.strokeDasharray=GC);
+
+function buildSeed(){
+  const init={};
+  SEED.forEach(v=>{
+    const issued = SEED_AS_ISSUED && v.status==='out';
+    init[v.id]={cat:v.cat,name:v.name,sub:v.sub||'',nsn:v.nsn||'',serial:v.serial||'',loc:v.loc||'',
+      status: issued?'out':'available', soldier: issued?(v.soldier||null):null, rank: issued?(v.rank||null):null,
+      time: issued?'ON ISSUE':null, note:null};
+  });
+  return init;
+}
+
+if(!configured){ document.getElementById('setupNag').style.display='flex'; }
+else{
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db=firebase.database();
+  db.ref('.info/connected').on('value',s=>{const on=!!s.val();document.querySelectorAll('.radar').forEach(r=>r.style.background=on?'var(--green)':'var(--red)');});
+  const root=db.ref('motorpool');
+  root.child('meta/seedVersion').once('value',snap=>{
+    if(snap.val()!==SEED_VERSION){
+      root.child('equipment').set(buildSeed());
+      root.child('meta/seedVersion').set(SEED_VERSION);
+    }
+  });
+  root.child('equipment').on('value',snap=>{ state=snap.val()||{}; onState(); });
+  root.child('log').limitToLast(40).on('value',snap=>renderLog(snap.val()||{}));
+}
+
+function fmtTime(d){return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0')+':'+d.getSeconds().toString().padStart(2,'0')+' Z';}
+function tick(){document.getElementById('clock').textContent=fmtTime(new Date());}
+setInterval(tick,1000);tick();
+
+function onState(){ if(VIEW==='board')renderBoard(); else{refreshVehSel();refreshDeadSel();} prevState=JSON.parse(JSON.stringify(state)); }
+function pushLog(msg,type){ if(db)db.ref('motorpool/log').push({msg,type,ts:Date.now()}); }
+
+function animNum(el,to){const from=parseInt(el.dataset.v||'0',10);if(from===to){el.textContent=to;el.dataset.v=to;return;}const dur=600,st=performance.now();function f(t){const k=Math.min(1,(t-st)/dur);const e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;el.textContent=Math.round(from+(to-from)*e);if(k<1)requestAnimationFrame(f);}requestAnimationFrame(f);el.dataset.v=to;}
+function setGauge(rate){const off=GC*(1-rate/100);const p=document.getElementById('gaugeProg');const pct=document.getElementById('gaugePct');if(!p)return;p.style.strokeDashoffset=off;const c=rate>=90?'var(--green)':rate>=75?'var(--amber)':'var(--red)';p.style.stroke=c;pct.style.color=c;animNum(pct,rate);pct.textContent=rate+'%';pct.dataset.v=rate;}
+
+function renderBoard(){
+  const wrap=document.getElementById('board'); wrap.innerHTML='';
+  let out=0,dead=0,total=0; const ids=Object.keys(state);
+  ids.forEach(id=>{const s=state[id];total++;if(s.status==='out')out++;if(s.status==='deadline')dead++;});
+  let idx=0;
+  CAT_ORDER.concat(['OTHER']).forEach(cat=>{
+    const catIds=ids.filter(id=>(CAT_ORDER.includes(state[id].cat)?state[id].cat:'OTHER')===cat);
+    if(!catIds.length) return;
+    if(filter!=='all' && filter!==cat) return;
+    const avail=catIds.filter(id=>state[id].status==='available').length;
+    const pctAvail=Math.round((avail/catIds.length)*100);
+    const sec=document.createElement('div'); sec.className='catsec';
+    sec.innerHTML='<div class="cathd"><span class="nm"><i class="ti '+(CAT_ICON[cat]||'ti-box')+'"></i> '+(CAT_LABEL[cat]||cat)+'</span><span class="bar"></span><span class="cnt">'+avail+' / '+catIds.length+' available</span><span class="pbar"><i style="width:'+pctAvail+'%"></i></span></div>';
+    const grid=document.createElement('div'); grid.className='bgrid';
+    catIds.forEach(id=>{
+      const s=state[id];
+      let cls='avail',pill='avail',txt='AVAILABLE';
+      if(s.status==='out'){cls='out';pill='out';txt='SIGNED OUT';}
+      if(s.status==='deadline'){cls='deadline';pill='dead';txt='NMC / DEADLINE';}
+      const changed=!firstRender&&prevState[id]&&prevState[id].status!==s.status;
+      const card=document.createElement('div'); card.className='vc '+cls+(changed?' flash':'')+(firstRender?' enter':'');
+      if(firstRender)card.style.animationDelay=(idx*12)+'ms';
+      card.innerHTML='<div class="nm">'+s.name+'</div><div class="sub">'+(s.sub||'')+'</div>'+
+        '<span class="pill '+pill+'">'+txt+'</span>'+
+        (s.status==='out'?'<div class="sol"><i class="ti ti-user"></i> '+(s.rank||'')+' '+(s.soldier||'')+'</div>'+(s.note?'<div class="note">'+s.note+'</div>':'')+'<div class="tm">'+(s.time||'')+'</div>':'')+
+        (s.status==='deadline'&&s.note?'<div class="note" style="color:#ff8888;">'+s.note+'</div>':'');
+      grid.appendChild(card); idx++;
+    });
+    sec.appendChild(grid); wrap.appendChild(sec);
+  });
+  const fmc=total-dead, rate=total?Math.round((fmc/total)*100):0;
+  animNum(document.getElementById('rTotal'),total);
+  animNum(document.getElementById('rFmc'),fmc);
+  animNum(document.getElementById('rOut'),out);
+  animNum(document.getElementById('rDead'),dead);
+  setGauge(rate);
+  firstRender=false;
+}
+function renderLog(o){const list=document.getElementById('blogList');if(!list)return;list.innerHTML='';Object.values(o).sort((a,b)=>b.ts-a.ts).forEach(e=>{const d=document.createElement('div');d.className='le '+(e.type||'');d.innerHTML='<b>'+fmtTime(new Date(e.ts))+'</b>  '+e.msg;list.appendChild(d);});}
+
+document.querySelectorAll('.fbtn').forEach(b=>b.addEventListener('click',function(){document.querySelectorAll('.fbtn').forEach(x=>x.classList.remove('active'));this.classList.add('active');filter=this.dataset.f;firstRender=true;renderBoard();}));
+
+let currentSoldier=null,stream=null,scanning=false,voiceOn=true;
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function speak(t){if(!voiceOn)return;try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=.96;u.pitch=.9;speechSynthesis.speak(u);}catch(e){}}
+function setStatus(m,t){const el=document.getElementById('statusT');if(!el)return;el.textContent=m;el.className='t'+(t?' '+t:'');}
+
+if(VIEW==='scan'){
+  document.getElementById('scanBtn').addEventListener('click',scanClick);
+  document.getElementById('btnOut').addEventListener('click',()=>doTxn('out'));
+  document.getElementById('btnIn').addEventListener('click',()=>doTxn('in'));
+  document.getElementById('clearBtn').addEventListener('click',clearSoldier);
+  document.getElementById('voiceTg').addEventListener('click',function(){voiceOn=!voiceOn;this.classList.toggle('on',voiceOn);voiceOn?speak('Voice enabled.'):speechSynthesis.cancel();});
+  document.getElementById('voiceBtn').addEventListener('click',voiceInput);
+  document.getElementById('addBtn').addEventListener('click',addVeh);
+  document.getElementById('deadBtn').addEventListener('click',toggleDead);
+  document.getElementById('manualBtn').addEventListener('click',()=>{stopCam();document.getElementById('manualForm').style.display='block';document.getElementById('mName').focus();setStatus('MANUAL ENTRY - TYPE RANK AND NAME');});
+  document.getElementById('mCancel').addEventListener('click',()=>{document.getElementById('manualForm').style.display='none';setStatus('SYSTEM READY - AWAITING ACTIVATION');});
+  document.getElementById('mConfirm').addEventListener('click',()=>{
+    const rank=document.getElementById('mRank').value.trim().toUpperCase();
+    const name=document.getElementById('mName').value.trim().toUpperCase();
+    if(!name){setStatus('NAME REQUIRED','warn');return;}
+    currentSoldier={name:name,rank:rank||'N/A'};
+    document.getElementById('soldierCard').style.display='block';
+    document.getElementById('solName').textContent=name;
+    document.getElementById('solRank').textContent=rank||'RANK N/A';
+    document.getElementById('manualForm').style.display='none';
+    document.getElementById('mRank').value='';document.getElementById('mName').value='';
+    setStatus('MANUAL ENTRY OK - STATE EQUIPMENT');
+    speak('Manual entry. '+(rank||'')+' '+name+'. State your equipment.');
+    pushLog('MANUAL ENTRY: '+(rank||'')+' '+name,'');
+    refreshVehSel();
+  });
+}
+async function startCam(){try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=document.getElementById('video');v.srcObject=stream;v.style.display='block';document.getElementById('ph').style.display='none';return true;}catch(e){setStatus('CAMERA DENIED - CHECK PERMISSIONS','err');return false;}}
+function stopCam(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}const v=document.getElementById('video');v.style.display='none';v.srcObject=null;document.getElementById('ph').style.display='flex';}
+function grab(){const v=document.getElementById('video');const c=document.createElement('canvas');c.width=v.videoWidth||640;c.height=v.videoHeight||480;c.getContext('2d').drawImage(v,0,0);return c.toDataURL('image/jpeg',.85).split(',')[1];}
+async function readCAC(b64){
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},{type:'text',text:'This photo shows a US Army uniform. Read the LAST NAME from the name tape (the embroidered tape on the right chest), and identify the RANK from the rank insignia (center chest tab on ACU/OCP, or collar/shoulder). Respond ONLY with valid JSON, no preamble, no markdown. Format: {"name":"LASTNAME","rank":"SSG"}. Use standard US Army rank abbreviations (PVT,PV2,PFC,SPC,CPL,SGT,SSG,SFC,MSG,1SG,SGM,CSM,WO1,CW2,CW3,CW4,CW5,2LT,1LT,CPT,MAJ,LTC,COL). If you can read the name tape but not the rank, return the name with "rank":null. If no name tape is visible, return {"name":null,"rank":null}.'}]}]})});
+  const d=await r.json();
+  if(!r.ok || d.error){const m=d.error?(d.error.type+': '+(d.error.message||'')):('HTTP '+r.status);throw new Error(m);}
+  const txt=(d.content||[]).map(c=>c.text||'').join('');
+  try{return JSON.parse(txt.replace(/```json|```/g,'').trim());}catch(e){throw new Error('Unexpected AI reply: '+txt.slice(0,50));}
+}
+async function scanClick(){
+  if(scanning)return;const btn=document.getElementById('scanBtn');
+  if(!stream){btn.textContent='INITIALIZING...';btn.disabled=true;const ok=await startCam();if(!ok){btn.textContent='ACTIVATE SCANNER';btn.disabled=false;return;}btn.textContent='CAPTURE NAME TAPE';btn.disabled=false;setStatus('CAMERA ACTIVE - AIM AT NAME TAPE & RANK');speak('Camera active. Center your name tape and rank in the frame.');return;}
+  scanning=true;btn.disabled=true;document.getElementById('cam').classList.add('scanning');setStatus('SCANNING... AI READING NAME TAPE');
+  try{
+    const res=await readCAC(grab());document.getElementById('cam').classList.remove('scanning');
+    if(!res.name){setStatus('NO NAME TAPE READ - REPOSITION & RETRY','err');speak('No name tape detected. Reposition and try again.');scanning=false;btn.disabled=false;btn.textContent='CAPTURE NAME TAPE';return;}
+    currentSoldier={name:res.name,rank:res.rank||null};
+    document.getElementById('soldierCard').style.display='block';
+    document.getElementById('solName').textContent=res.name;document.getElementById('solRank').textContent=res.rank||'RANK NOT READ - TAP MANUAL TO ADD';
+    setStatus(res.rank?'SCAN COMPLETE - STATE EQUIPMENT':'NAME READ - RANK UNCLEAR, OK TO PROCEED','');
+    speak('Identified. '+(res.rank?res.rank+' ':'')+res.name+'. Scan complete. State your equipment.');
+    pushLog('NAME TAPE scanned: '+(res.rank||'(no rank)')+' '+res.name,'');
+    stopCam();btn.textContent='ACTIVATE SCANNER';btn.disabled=false;refreshVehSel();
+  }catch(e){document.getElementById('cam').classList.remove('scanning');setStatus('SCAN ERROR: '+(e.message||e),'err');btn.disabled=false;btn.textContent='CAPTURE NAME TAPE';}
+  scanning=false;
+}
+function refreshVehSel(){
+  const sel=document.getElementById('vehSel');if(!sel)return;
+  if(!currentSoldier){sel.innerHTML='<option value="">- Scan name tape first -</option>';sel.disabled=true;return;}
+  sel.innerHTML='<option value="">- Select equipment -</option>';
+  const ids=Object.keys(state);
+  const out=ids.filter(id=>state[id].status==='out');
+  if(out.length){const g=document.createElement('optgroup');g.label='SIGNED OUT (return any)';out.forEach(id=>{const o=document.createElement('option');o.value=id;const own=state[id].soldier===currentSoldier.name;o.textContent='[OUT'+(own?'-YOU':'')+'] '+state[id].name+' ('+(state[id].sub||'')+')';g.appendChild(o);});sel.appendChild(g);}
+  CAT_ORDER.forEach(cat=>{
+    const av=ids.filter(id=>state[id].status==='available'&&state[id].cat===cat);
+    if(!av.length)return;
+    const g=document.createElement('optgroup');g.label=(CAT_LABEL[cat]||cat).toUpperCase();
+    av.forEach(id=>{const o=document.createElement('option');o.value=id;o.textContent=state[id].name+' ('+(state[id].sub||'')+')';g.appendChild(o);});
+    sel.appendChild(g);
+  });
+  sel.disabled=false;document.getElementById('btnOut').disabled=false;document.getElementById('btnIn').disabled=false;document.getElementById('voiceBtn').disabled=false;
+}
+function refreshDeadSel(){const sel=document.getElementById('deadSel');if(!sel)return;sel.innerHTML='<option value="">- Toggle deadline -</option>';Object.keys(state).forEach(id=>{const o=document.createElement('option');o.value=id;o.textContent=state[id].name+(state[id].status==='deadline'?' [NMC]':'');sel.appendChild(o);});}
+function closer(cat){const isVeh=(cat==='VEHICLE'||cat==='GSA RENTAL');return isVeh?' Transaction recorded. Safe travels.':' Transaction recorded. You are good to go.';}
+function doTxn(kind){
+  const sel=document.getElementById('vehSel');const id=sel.value;if(!id||!currentSoldier)return;const s=state[id];
+  const rk=currentSoldier.rank||'';
+  if(kind==='out'){
+    if(s.status==='deadline'){setStatus('CANNOT DISPATCH - DEADLINED','warn');speak('That item is deadlined and not mission capable.');return;}
+    if(s.status==='out'){setStatus('ALREADY SIGNED OUT','warn');speak('That item is already signed out.');return;}
+    db.ref('motorpool/equipment/'+id).update({status:'out',soldier:currentSoldier.name,rank:rk,time:fmtTime(new Date()),note:null});
+    pushLog('SIGN OUT: '+(rk+' '+currentSoldier.name).trim()+' - '+s.name,'o');setStatus('SIGNED OUT: '+s.name);
+    speak(s.name+' signed out to '+(rk+' '+currentSoldier.name).trim()+'.'+closer(s.cat));
+  }else{
+    if(s.status!=='out'){setStatus('NOT SIGNED OUT','warn');speak('That item is not currently signed out.');return;}
+    const orig=s.soldier,proxy=orig!==currentSoldier.name;
+    db.ref('motorpool/equipment/'+id).update({status:'available',soldier:null,rank:null,time:null,note:null});
+    if(proxy)pushLog('FLAG: '+s.name+' returned by '+(rk+' '+currentSoldier.name).trim()+' - orig '+orig,'f');
+    pushLog('SIGN IN: '+s.name+' returned by '+(rk+' '+currentSoldier.name).trim()+(proxy?' [PROXY]':''),'i');
+    setStatus('SIGNED IN: '+s.name+(proxy?' (proxy logged)':''),proxy?'warn':'');
+    speak(s.name+' signed in and available.'+(proxy?' Note. Returned on behalf of '+orig+'.':'')+' Transaction recorded.');
+  }
+}
+function clearSoldier(){currentSoldier=null;stopCam();var mf=document.getElementById('manualForm');if(mf)mf.style.display='none';document.getElementById('soldierCard').style.display='none';document.getElementById('solName').textContent='-';document.getElementById('solRank').textContent='-';document.getElementById('btnOut').disabled=true;document.getElementById('btnIn').disabled=true;document.getElementById('voiceBtn').disabled=true;document.getElementById('scanBtn').textContent='ACTIVATE SCANNER';refreshVehSel();setStatus('SYSTEM READY - AWAITING ACTIVATION');}
+function voiceInput(){
+  if(!SR){setStatus('VOICE INPUT NOT SUPPORTED','err');return;}
+  const rec=new SR();rec.lang='en-US';rec.interimResults=false;rec.maxAlternatives=3;
+  const btn=document.getElementById('voiceBtn');btn.classList.add('listening');setStatus('LISTENING... STATE EQUIPMENT');speak('Listening.');rec.start();
+  rec.onresult=ev=>{btn.classList.remove('listening');const heard=ev.results[0][0].transcript.toLowerCase();setStatus('HEARD: "'+heard+'"');
+    const norm=heard.replace(/[^a-z0-9 ]/g,'');const ids=Object.keys(state);
+    let mid=ids.find(id=>{const n=state[id].name.toLowerCase();return norm.includes(n)||n.includes(norm);});
+    if(!mid){const nm=norm.match(/(\d+)/);if(nm){mid=ids.find(id=>state[id].name.toLowerCase().includes(nm[1]));}}
+    if(mid){document.getElementById('vehSel').value=mid;setStatus('MATCHED: '+state[mid].name+' - CONFIRM');speak('Matched '+state[mid].name+'. Sign out, or sign in?');}
+    else{setStatus('NO MATCH - SELECT MANUALLY','warn');speak('I did not catch that. Select manually.');}};
+  rec.onerror=()=>{btn.classList.remove('listening');setStatus('VOICE ERROR - SELECT MANUALLY','warn');};
+  rec.onend=()=>btn.classList.remove('listening');
+}
+function addVeh(){const inp=document.getElementById('newVeh');const name=inp.value.trim().toUpperCase();if(!name)return;const id='cust'+Date.now();db.ref('motorpool/equipment/'+id).set({cat:'VEHICLE',name,sub:'ADDED',status:'available',soldier:null,rank:null,time:null,note:null});inp.value='';pushLog('ADMIN: added '+name,'f');setStatus('EQUIPMENT ADDED: '+name);speak('Equipment added. '+name);}
+function toggleDead(){const sel=document.getElementById('deadSel');const id=sel.value;if(!id)return;const s=state[id];
+  if(s.status==='deadline'){db.ref('motorpool/equipment/'+id).update({status:'available',note:null});pushLog('ADMIN: '+s.name+' back to FMC','f');speak(s.name+' is now mission capable.');}
+  else{db.ref('motorpool/equipment/'+id).update({status:'deadline',soldier:null,rank:null,time:null,note:'NMC - admin flagged'});pushLog('ADMIN: '+s.name+' deadlined','d');speak(s.name+' marked deadline. Not mission capable.');}}
+</script>
+</body>
+</html>
