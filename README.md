@@ -209,5 +209,5 @@ is doing with AI.
 ---
 
 *"No Soldiers are building products with AI. I want to show I can."*
-*— CW3 Cirello, Annual Training 2025*
+*Joseph Cirello, Annual Training 2025*
 
