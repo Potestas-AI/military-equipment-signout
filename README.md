@@ -6,8 +6,8 @@ name tape and rank insignia with a phone camera, sign equipment in or out by voi
 and a live big-screen command board updates instantly across all devices — no wires, no app
 install, no server to run.
 
-Built as a proof of concept during Annual Training to show what a single Soldier with AI
-knowledge can build that entire teams haven't thought to make yet.
+Built as a proof of concept to show what one person with AI knowledge can build that
+entire teams haven't thought to make yet.
 
 ---
 
@@ -190,10 +190,9 @@ Some ideas for where to take this next:
 **Joseph Cirello** is a U.S. Army veteran and the founder of **Potestas AI**, an independent
 AI testing company in Providence, Rhode Island.
 
-This project was built during a 3-week Annual Training period as a proof of concept
-demonstrating that individual Soldiers with AI knowledge can build operational tools that
-solve real logistics problems — without a development team, without a budget, and without
-waiting for a program of record.
+This project was built in three weeks as a proof of concept demonstrating that one person
+with AI knowledge can build operational tools that solve real logistics problems, without a
+development team, without a budget, and without waiting for a program of record.
 
 Brought to you by Potestas AI. Website: [potestasai.com](https://potestasai.com)
 
@@ -209,5 +208,5 @@ is doing with AI.
 ---
 
 *"No Soldiers are building products with AI. I want to show I can."*
-*Joseph Cirello, Annual Training 2025*
+*Joseph Cirello, 2025*
 
