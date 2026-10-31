@@ -1,5 +1,5 @@
 # AI-Powered Equipment Sign-Out System
-### Built by CW3 Joseph Cirello | CEO, PotestasAI
+### Built by Joseph Cirello, U.S. Army veteran. Brought to you by [Potestas AI](https://potestasai.com).
 
 A real-time, AI-powered military equipment dispatch and readiness board. Scan a Soldier's
 name tape and rank insignia with a phone camera, sign equipment in or out by voice or tap,
@@ -187,16 +187,15 @@ Some ideas for where to take this next:
 
 ## About the Author
 
-**CW3 Joseph Cirello** is a logistics warrant officer (920A) in the US Army Reserve and
-the CEO and founder of **PotestasAI** — an AI company building practical AI products for
-real-world use cases.
+**Joseph Cirello** is a U.S. Army veteran and the founder of **Potestas AI**, an independent
+AI testing company in Providence, Rhode Island.
 
 This project was built during a 3-week Annual Training period as a proof of concept
 demonstrating that individual Soldiers with AI knowledge can build operational tools that
 solve real logistics problems — without a development team, without a budget, and without
 waiting for a program of record.
 
-Website: [potestasai.com](https://potestasai.com)
+Brought to you by Potestas AI. Website: [potestasai.com](https://potestasai.com)
 
 ---
 
