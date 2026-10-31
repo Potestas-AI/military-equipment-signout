@@ -187,16 +187,12 @@ Some ideas for where to take this next:
 
 ## About the Author
 
-**Joseph Cirello** is a U.S. Army veteran and the founder of **Potestas AI**, an independent
-AI testing company in Providence, Rhode Island.
+**Joseph Cirello** is a U.S. Army veteran and the founder of [Potestas AI](https://potestasai.com).
 
 This project was built in three weeks as a proof of concept demonstrating that one person
 with AI knowledge can build operational tools that solve real logistics problems, without a
 development team, without a budget, and without waiting for a program of record.
 
-Brought to you by Potestas AI. Website: [potestasai.com](https://potestasai.com)
-
----
 
 ## License
 
@@ -204,9 +200,3 @@ MIT License — free to use, modify, and distribute. Attribution appreciated but
 
 If you build something useful with this, reach out. Always interested in what the force
 is doing with AI.
-
----
-
-*"No Soldiers are building products with AI. I want to show I can."*
-*Joseph Cirello, 2025*
-
