@@ -193,6 +193,7 @@ This project was built in three weeks as a proof of concept demonstrating that o
 with AI knowledge can build operational tools that solve real logistics problems, without a
 development team, without a budget, and without waiting for a program of record.
 
+---
 
 ## License
 
