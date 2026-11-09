@@ -9,6 +9,12 @@ install, no server to run.
 Built as a proof of concept to show what one person with AI knowledge can build that
 entire teams haven't thought to make yet.
 
+> **Before you deploy:** this is a proof of concept for your own devices. The name tape
+> scanner calls the AI model straight from the browser, so anyone who can open your page
+> can read the API key inside it. Keep the link private, or move that call to a small
+> server function first (see *Extending This*). The file in this repo holds placeholders
+> only, never a real key.
+
 ---
 
 ## What It Does
@@ -29,13 +35,15 @@ entire teams haven't thought to make yet.
 
 ---
 
-## Demo
+## How It Runs
 
-**Board view** (TV / laptop big screen):
-`https://your-netlify-site.netlify.app`
+There is no shared public demo: each unit runs its own copy, on its own free Firebase
+project and its own key (Setup, below, about 20 minutes). Once deployed, the same file
+gives you two views:
 
-**Scanner view** (phone):
-`https://your-netlify-site.netlify.app?view=scan`
+**Board view** (TV / laptop big screen): `https://<your-site>.netlify.app`
+
+**Scanner view** (phone): `https://<your-site>.netlify.app?view=scan`
 
 The two views talk to each other live through Firebase. Your phone signs equipment out, the
 board updates in under a second. No page reload. No cable between devices.
@@ -197,7 +205,7 @@ development team, without a budget, and without waiting for a program of record.
 
 ## License
 
-MIT License — free to use, modify, and distribute. Attribution appreciated but not required.
+MIT License (see `LICENSE`) — free to use, modify, and distribute. Attribution appreciated but not required.
 
 If you build something useful with this, reach out. Always interested in what the force
 is doing with AI.
